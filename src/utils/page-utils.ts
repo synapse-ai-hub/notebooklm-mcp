@@ -441,6 +441,23 @@ export async function waitForLatestAnswer(
       }
     }
 
+    // ========================================
+    // AUTO-REFRESH LOGIC (Safety for UI hangs)
+    // ========================================
+    const elapsed = Date.now() - (deadline - timeoutMs);
+    const reloadThreshold = 45000; // 45 seconds
+    if (elapsed > reloadThreshold && !lastCandidate && pollCount % 45 === 0) {
+      log.warning(`  🔄 [STALE] No response detected after 45s. Forcing page reload...`);
+      try {
+        await page.reload({ waitUntil: 'networkidle' });
+        log.success(`  ✅ [STALE] Page reloaded. Resuming detection...`);
+        // Small wait after reload
+        await page.waitForTimeout(2000);
+      } catch (err) {
+        log.error(`  ❌ [STALE] Reload failed: ${err}`);
+      }
+    }
+
     await page.waitForTimeout(pollIntervalMs);
   }
 

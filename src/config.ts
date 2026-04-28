@@ -98,7 +98,7 @@ const DEFAULTS: Config = {
 
   // Session Management
   maxSessions: 10,
-  sessionTimeout: 900, // 15 minutes
+  sessionTimeout: 7200, // 120 minutes
 
   // Authentication
   autoLoginEnabled: false,

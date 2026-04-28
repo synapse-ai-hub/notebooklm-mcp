@@ -47,7 +47,7 @@ const SERVER_VERSION = packageJson.version;
 const HTTP_BASE_URL = process.env.MCP_HTTP_URL || 'http://localhost:3000';
 
 // Default timeout for HTTP requests (5 minutes)
-const HTTP_REQUEST_TIMEOUT_MS = parseInt(process.env.MCP_HTTP_TIMEOUT || '300000', 10);
+const HTTP_REQUEST_TIMEOUT_MS = parseInt(process.env.MCP_HTTP_TIMEOUT || '600000', 10);
 
 /**
  * Helper to make HTTP requests to the backend server

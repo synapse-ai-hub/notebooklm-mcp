@@ -12,12 +12,22 @@
 import envPaths from 'env-paths';
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Load .env file from project root (one level up from src/)
+const currentFile = fileURLToPath(import.meta.url);
+const projectRoot = dirname(dirname(currentFile));
+const envFilePath = path.join(projectRoot, '.env');
+if (fs.existsSync(envFilePath)) {
+  dotenv.config({ path: envFilePath });
+}
 
 // Cross-platform data paths (unified without -nodejs suffix)
 // Linux: ~/.local/share/notebooklm-mcp/
 // macOS: ~/Library/Application Support/notebooklm-mcp/
 // Windows: %APPDATA%\notebooklm-mcp\
-// IMPORTANT: Pass empty string suffix to disable envPaths' default '-nodejs' suffix!
 const paths = envPaths('notebooklm-mcp', { suffix: '' });
 
 /**

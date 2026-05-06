@@ -103,25 +103,25 @@ Ejemplo de respuesta:
 Hace que un notebook sea el activo para preguntar.
 
 ```bash
-curl http://127.0.0.1:3000/notebooks/{id}/select
+curl -X PUT http://127.0.0.1:3000/notebooks/{id}/activate
 ```
 
 Ejemplo:
 
 ```bash
-curl http://127.0.0.1:3000/notebooks/ai-architect/select
+curl -X PUT http://127.0.0.1:3000/notebooks/ai-architect/activate
 ```
 
 **PowerShell:**
 
 ```powershell
-Invoke-WebRequest http://127.0.0.1:3000/notebooks/ai-architect/select -Method POST
+Invoke-WebRequest http://127.0.0.1:3000/notebooks/ai-architect/activate -Method PUT
 ```
 
 **PowerShell (completo):**
 
 ```powershell
-Invoke-WebRequest http://127.0.0.1:3000/notebooks/ai-architect/select -Method POST | Select-Object -ExpandProperty Content | Out-File -FilePath result.json -Encoding utf8
+Invoke-WebRequest http://127.0.0.1:3000/notebooks/ai-architect/activate -Method PUT | Select-Object -ExpandProperty Content | Out-File -FilePath result.json -Encoding utf8
 Get-Content result.json -Raw
 ```
 
@@ -170,7 +170,7 @@ Get-Content result.json -Raw
 **El principal - para hacer preguntas.**
 
 ```bash
-curl -X POST http://127.0.0.1:3000/chat \
+curl -X POST http://127.0.0.1:3000/ask \
   -H "Content-Type: application/json" \
   -d '{"question": "TU PREGUNTA", "session_id": "nombre-opcional"}'
 ```
@@ -178,7 +178,7 @@ curl -X POST http://127.0.0.1:3000/chat \
 Ejemplo:
 
 ```bash
-curl -X POST http://127.0.0.1:3000/chat \
+curl -X POST http://127.0.0.1:3000/ask \
   -H "Content-Type: application/json" \
   -d '{"question": "Qué sabes sobre vector databases?", "session_id": "test"}'
 ```
@@ -186,13 +186,16 @@ curl -X POST http://127.0.0.1:3000/chat \
 **Parámetros:**
 
 - `question` (required): La pregunta en texto
+- `notebook_id` (optional): ID del notebook a usar
+- `notebook_url` (optional): URL directa del notebook
 - `session_id` (optional): Si no lo pasás, crea uno nuevo. Si repetís el mismo, sigue la conversación.
 - `show_browser` (optional): true/false para mostrar el navegador
+- `source_format` (optional): Formato de citación (none, inline, footnotes, json, expanded)
 
 **Alternativa con show_browser:**
 
 ```bash
-curl -X POST http://127.0.0.1:3000/chat \
+curl -X POST http://127.0.0.1:3000/ask \
   -H "Content-Type: application/json" \
   -d '{"question": "...", "show_browser": true}'
 ```
@@ -201,14 +204,14 @@ curl -X POST http://127.0.0.1:3000/chat \
 
 ```powershell
 $body = @{question="TU PREGUNTA"; session_id="nombre-opcional"} | ConvertTo-Json
-Invoke-WebRequest http://127.0.0.1:3000/chat -Method POST -Body $body -ContentType "application/json"
+Invoke-WebRequest http://127.0.0.1:3000/ask -Method POST -Body $body -ContentType "application/json"
 ```
 
 **PowerShell (completo):**
 
 ```powershell
 $body = @{question="TU PREGUNTA"; session_id="nombre-opcional"} | ConvertTo-Json
-Invoke-WebRequest http://127.0.0.1:3000/chat -Method POST -Body $body -ContentType "application/json" | Select-Object -ExpandProperty Content | Out-File -FilePath result.json -Encoding utf8
+Invoke-WebRequest http://127.0.0.1:3000/ask -Method POST -Body $body -ContentType "application/json" | Select-Object -ExpandProperty Content | Out-File -FilePath result.json -Encoding utf8
 Get-Content result.json -Raw
 ```
 
@@ -285,19 +288,23 @@ Get-Content result.json -Raw
 Abre el navegador para hacer login en Google/NotebookLM (si no está autenticado).
 
 ```bash
-curl -X POST http://127.0.0.1:3000/setup-auth
+curl -X POST http://127.0.0.1:3000/setup-auth \
+  -H "Content-Type: application/json" \
+  -d '{"show_browser": true}'
 ```
 
 **PowerShell:**
 
 ```powershell
-Invoke-WebRequest http://127.0.0.1:3000/setup-auth -Method POST
+$body = @{show_browser=$true} | ConvertTo-Json
+Invoke-WebRequest http://127.0.0.1:3000/setup-auth -Method POST -Body $body -ContentType "application/json"
 ```
 
 **PowerShell (completo):**
 
 ```powershell
-Invoke-WebRequest http://127.0.0.1:3000/setup-auth -Method POST | Select-Object -ExpandProperty Content | Out-File -FilePath result.json -Encoding utf8
+$body = @{show_browser=$true} | ConvertTo-Json
+Invoke-WebRequest http://127.0.0.1:3000/setup-auth -Method POST -Body $body -ContentType "application/json" | Select-Object -ExpandProperty Content | Out-File -FilePath result.json -Encoding utf8
 Get-Content result.json -Raw
 ```
 
@@ -307,32 +314,88 @@ Get-Content result.json -Raw
 - `data.authenticated`: true
 - `data.duration_seconds`: tiempo que tardó
 
----
+### De-auth - Cerrar sesión
 
-## 9. Cuentas
-
-Lista las cuentas de Google que tenés configuradas.
+Cierra la sesión actual manteniendo la biblioteca.
 
 ```bash
-curl -X POST http://127.0.0.1:3000/accounts
+curl -X POST http://127.0.0.1:3000/de-auth
 ```
 
 **PowerShell:**
 
 ```powershell
-Invoke-WebRequest http://127.0.0.1:3000/accounts -Method POST
+Invoke-WebRequest http://127.0.0.1:3000/de-auth -Method POST
 ```
 
 **PowerShell (completo):**
 
 ```powershell
-Invoke-WebRequest http://127.0.0.1:3000/accounts -Method POST | Select-Object -ExpandProperty Content | Out-File -FilePath result.json -Encoding utf8
+Invoke-WebRequest http://127.0.0.1:3000/de-auth -Method POST | Select-Object -ExpandProperty Content | Out-File -FilePath result.json -Encoding utf8
+Get-Content result.json -Raw
+```
+
+### Re-auth - Re-autenticar
+
+Cambiar de cuenta o re-autenticar después de cerrar sesión.
+
+```bash
+curl -X POST http://127.0.0.1:3000/re-auth \
+  -H "Content-Type: application/json" \
+  -d '{"show_browser": true}'
+```
+
+**PowerShell:**
+
+```powershell
+$body = @{show_browser=$true} | ConvertTo-Json
+Invoke-WebRequest http://127.0.0.1:3000/re-auth -Method POST -Body $body -ContentType "application/json"
+```
+
+**PowerShell (completo):**
+
+```powershell
+$body = @{show_browser=$true} | ConvertTo-Json
+Invoke-WebRequest http://127.0.0.1:3000/re-auth -Method POST -Body $body -ContentType "application/json" | Select-Object -ExpandProperty Content | Out-File -FilePath result.json -Encoding utf8
+Get-Content result.json -Raw
+```
+
+### Cleanup Data - Limpiar datos
+
+Limpia todos los datos del MCP. Requiere parámetro `confirm`.
+
+```bash
+# Preview (sin ejecutar)
+curl -X POST http://127.0.0.1:3000/cleanup-data \
+  -H "Content-Type: application/json" \
+  -d '{"confirm": false, "preserve_library": true}'
+
+# Ejecutar limpieza
+curl -X POST http://127.0.0.1:3000/cleanup-data \
+  -H "Content-Type: application/json" \
+  -d '{"confirm": true, "preserve_library": true}'
+```
+
+**PowerShell:**
+
+```powershell
+$body = @{confirm=$false; preserve_library=$true} | ConvertTo-Json
+Invoke-WebRequest http://127.0.0.1:3000/cleanup-data -Method POST -Body $body -ContentType "application/json"
+```
+
+**PowerShell (completo):**
+
+```powershell
+$body = @{confirm=$true; preserve_library=$true} | ConvertTo-Json
+Invoke-WebRequest http://127.0.0.1:3000/cleanup-data -Method POST -Body $body -ContentType "application/json" | Select-Object -ExpandProperty Content | Out-File -FilePath result.json -Encoding utf8
 Get-Content result.json -Raw
 ```
 
 **Qué devuelve:**
 
-- Array de cuentas con: email, name, picture
+- `success`: true/false
+- `data.files_deleted`: cantidad de archivos eliminados
+- `data.space_freed_mb`: espacio liberado en MB
 
 ---
 
@@ -341,23 +404,19 @@ Get-Content result.json -Raw
 Busca notebooks por nombre/descripción/topics.
 
 ```bash
-curl -X POST http://127.0.0.1:3000/notebooks/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "busqueda"}'
+curl "http://127.0.0.1:3000/notebooks/search?query=busqueda"
 ```
 
 **PowerShell:**
 
 ```powershell
-$body = @{query="busqueda"} | ConvertTo-Json
-Invoke-WebRequest http://127.0.0.1:3000/notebooks/search -Method POST -Body $body -ContentType "application/json"
+Invoke-WebRequest "http://127.0.0.1:3000/notebooks/search?query=busqueda" -Method GET
 ```
 
 **PowerShell (completo):**
 
 ```powershell
-$body = @{query="busqueda"} | ConvertTo-Json
-Invoke-WebRequest http://127.0.0.1:3000/notebooks/search -Method POST -Body $body -ContentType "application/json" | Select-Object -ExpandProperty Content | Out-File -FilePath result.json -Encoding utf8
+Invoke-WebRequest "http://127.0.0.1:3000/notebooks/search?query=busqueda" -Method GET | Select-Object -ExpandProperty Content | Out-File -FilePath result.json -Encoding utf8
 Get-Content result.json -Raw
 ```
 
@@ -379,11 +438,11 @@ curl http://127.0.0.1:3000/health
 # 3. Listar notebooks
 curl http://127.0.0.1:3000/notebooks
 
-# 4. Seleccionar uno
-curl http://127.0.0.1:3000/notebooks/ai-architect/select
+# 4. Seleccionar uno (activar)
+curl -X PUT http://127.0.0.1:3000/notebooks/ai-architect/activate
 
 # 5. Preguntar
-curl -X POST http://127.0.0.1:3000/chat \
+curl -X POST http://127.0.0.1:3000/ask \
   -H "Content-Type: application/json" \
   -d '{"question": "Qué sabes sobre pgvector?"}'
 ```

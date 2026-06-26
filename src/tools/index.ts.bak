@@ -69,6 +69,8 @@ function buildAskQuestionDescription(library: NotebookLibrary): string {
 
   if (active) {
     const topics = active.topics?.join(', ') || '';
+    const useCases =
+      active.use_cases?.map((uc) => `  - ${uc}`).join('\n') || '  - Research and exploration';
 
     return `# Conversational Research Partner (NotebookLM • Gemini 2.5 • Session RAG)
 
@@ -76,11 +78,94 @@ function buildAskQuestionDescription(library: NotebookLibrary): string {
 **Content:** ${active.description}
 **Topics:** ${topics}
 
-Ask grounded questions, continue existing sessions via session_id, and cite sources.
-Use the same session_id for follow-ups to keep context.
-If no relevant notebook exists, skip this tool.`;
+> Auth tip: If login is required, use the prompt 'notebooklm.auth-setup' and then verify with the 'get_health' tool. If authentication later fails (e.g., expired cookies), use the prompt 'notebooklm.auth-repair'.
+
+## What This Tool Is
+- Full conversational research with Gemini (LLM) grounded on your notebook sources
+- Session-based: each follow-up uses prior context for deeper, more precise answers
+- Source-cited responses designed to minimize hallucinations
+
+## When To Use
+${useCases}
+
+## Rules (Important)
+- Always prefer continuing an existing session for the same task
+- If you start a new thread, create a new session and keep its session_id
+- Ask clarifying questions before implementing; do not guess missing details
+- If multiple notebooks could apply, propose the top 1–2 and ask which to use
+- If task context changes, ask to reset the session or switch notebooks
+- If authentication fails, use the prompts 'notebooklm.auth-repair' (or 'notebooklm.auth-setup') and verify with 'get_health'
+- After every NotebookLM answer: pause, compare with the user's goal, and only respond if you are 100% sure the information is complete. Otherwise, plan the next NotebookLM question in the same session.
+
+## Session Flow (Recommended)
+\`\`\`javascript
+// 1) Start broad (no session_id → creates one)
+ask_question({ question: "Give me an overview of [topic]" })
+// ← Save: result.session_id
+
+// 2) Go specific (same session)
+ask_question({ question: "Key APIs/methods?", session_id })
+
+// 3) Cover pitfalls (same session)
+ask_question({ question: "Common edge cases + gotchas?", session_id })
+
+// 4) Ask for production example (same session)
+ask_question({ question: "Show a production-ready example", session_id })
+\`\`\`
+
+## Automatic Multi-Pass Strategy (Host-driven)
+- Simple prompts return once-and-done answers.
+- For complex prompts, the host should issue follow-up calls:
+  1. Implementation plan (APIs, dependencies, configuration, authentication).
+  2. Pitfalls, gaps, validation steps, missing prerequisites.
+- Keep the same session_id for all follow-ups, review NotebookLM's answer, and ask more questions until the problem is fully resolved.
+- Before replying to the user, double-check: do you truly have everything? If not, queue another ask_question immediately.
+
+## 🔥 REAL EXAMPLE
+
+Task: "Implement error handling in n8n workflow"
+
+Bad (shallow):
+\`\`\`
+Q: "How do I handle errors in n8n?"
+A: [basic answer]
+→ Implement → Probably missing edge cases!
+\`\`\`
+
+Good (deep):
+\`\`\`
+Q1: "What are n8n's error handling mechanisms?" (session created)
+A1: [Overview of error handling]
+
+Q2: "What's the recommended pattern for API errors?" (same session)
+A2: [Specific patterns, uses context from Q1]
+
+Q3: "How do I handle retry logic and timeouts?" (same session)
+A3: [Detailed approach, builds on Q1+Q2]
+
+Q4: "Show me a production example with all these patterns" (same session)
+A4: [Complete example with full context]
+
+→ NOW implement with confidence!
+\`\`\`
+    
+## Notebook Selection
+- Default: active notebook (${active.id})
+- Or set notebook_id to use a library notebook
+- Or set notebook_url for ad-hoc notebooks (not in library)
+- If ambiguous which notebook fits, ASK the user which to use`;
   } else {
-    return `Conversational research via NotebookLM. No active notebook set. Use add_notebook or list_notebooks first.`;
+    return `# Conversational Research Partner (NotebookLM • Gemini 2.5 • Session RAG)
+
+## No Active Notebook
+- Visit https://notebooklm.google to create a notebook and get a share link
+- Use **add_notebook** to add it to your library (explains how to get the link)
+- Use **list_notebooks** to show available sources
+- Use **select_notebook** to set one active
+
+> Auth tip: If login is required, use the prompt 'notebooklm.auth-setup' and then verify with the 'get_health' tool. If authentication later fails (e.g., expired cookies), use the prompt 'notebooklm.auth-repair'.
+
+Tip: Tell the user you can manage NotebookLM library and ask which notebook to use for the current task.`;
   }
 }
 
@@ -211,7 +296,43 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     },
     {
       name: 'auto_discover_notebook',
-      description: `Auto-generate notebook metadata (name, description, topics) from a NotebookLM URL via the NotebookLM API. Prefer this over add_notebook. Falls back to add_notebook if auto-discovery fails.`,
+      description: `🚀 AUTO-DISCOVERY — Automatically generate notebook metadata via NotebookLM (RECOMMENDED)
+
+## When to Use
+- User provides NotebookLM URL and wants quick/automatic setup
+- User prefers not to manually specify metadata
+- Default choice for adding notebooks
+
+## Workflow
+1) User provides NotebookLM URL
+2) Ask confirmation: "Add '[URL]' with auto-generated metadata?"
+3) Call this tool → NotebookLM generates name, description, tags
+4) Show generated metadata to user for review
+
+## Benefits
+- ✅ 30 seconds vs 5 minutes manual entry
+- ✅ Zero-friction notebook addition
+- ✅ Consistent metadata quality
+- ✅ Discovers topics user might not think of
+
+## Example
+User: "Add this NotebookLM: https://notebooklm.google.com/notebook/abc123"
+You: "Add this notebook with auto-generated metadata?"
+User: "Yes"
+You: Call auto_discover_notebook(url="https://...")
+→ Returns: {name: "n8n-workflow-guide", description: "...", tags: [...]}
+
+## Fallback
+If auto-discovery fails (rare), use add_notebook tool for manual entry.
+
+## How to Get a NotebookLM Share Link
+
+Visit https://notebooklm.google/ → Login (free: 100 notebooks, 50 sources each, 500k words, 50 daily queries)
+1) Click "+ New" (top right) → Upload sources (docs, knowledge)
+2) Click "Share" (top right) → Select "Anyone with the link"
+3) Click "Copy link" (bottom left) → Give this link to Claude
+
+(Upgraded: Google AI Pro/Ultra gives 5x higher limits)`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -225,7 +346,53 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     },
     {
       name: 'add_notebook',
-      description: `Add a notebook with manually specified metadata (name, description, topics, url). Use auto_discover_notebook first when possible. Only use this when auto-discovery fails or user prefers manual entry.`,
+      description: `📝 MANUAL ENTRY — Add notebook with manually specified metadata (use auto_discover_notebook instead)
+
+## When to Use
+- Auto-discovery failed or unavailable
+- User has specific metadata requirements
+- User prefers manual control
+
+## Conversation Workflow (Mandatory)
+When the user says: "I have a NotebookLM with X"
+
+**FIRST:** Try auto_discover_notebook for faster setup
+**ONLY IF** user refuses auto-discovery or it fails:
+
+1) Ask URL: "What is the NotebookLM URL?"
+2) Ask content: "What knowledge is inside?" (1–2 sentences)
+3) Ask topics: "Which topics does it cover?" (3–5)
+4) Ask use cases: "When should we consult it?"
+5) Propose metadata and confirm:
+   - Name: [suggested]
+   - Description: [from user]
+   - Topics: [list]
+   - Use cases: [list]
+   "Add it to your library now?"
+6) Only after explicit "Yes" → call this tool
+
+## Rules
+- Do not add without user permission
+- Prefer auto_discover_notebook when possible
+- Do not guess metadata — ask concisely
+- Confirm summary before calling the tool
+
+## Example
+User: "I have a notebook with n8n docs"
+You: "Want me to auto-generate the metadata?" (offer auto_discover_notebook first)
+User: "No, I'll specify it myself"
+You: Ask URL → content → topics → use cases; propose summary
+User: "Yes"
+You: Call add_notebook
+
+## How to Get a NotebookLM Share Link
+
+Visit https://notebooklm.google/ → Login (free: 100 notebooks, 50 sources each, 500k words, 50 daily queries)
+1) Click "+ New" (top right) → Upload sources (docs, knowledge)
+2) Click "Share" (top right) → Select "Anyone with the link"
+3) Click "Copy link" (bottom left) → Give this link to Claude
+
+(Upgraded: Google AI Pro/Ultra gives 5x higher limits)`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -292,7 +459,21 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     },
     {
       name: 'select_notebook',
-      description: `Set a notebook as the active default. Used by ask_question when no notebook_id is provided. Announce the switch to the user.`,
+      description: `Set a notebook as the active default (used when ask_question has no notebook_id).
+
+## When To Use
+- User switches context: "Let's work on React now"
+- User asks explicitly to activate a notebook
+- Obvious task change requires another notebook
+
+## Auto-Switching
+- Safe to auto-switch if the context is clear and you announce it:
+  "Switching to React notebook for this task..."
+- If ambiguous, ask: "Switch to [notebook] for this task?"
+
+## Example
+User: "Now let's build the React frontend"
+You: "Switching to React notebook..." (call select_notebook)`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -306,7 +487,23 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     },
     {
       name: 'update_notebook',
-      description: `Update notebook metadata (name, description, topics, use_cases, tags, url). Propose changes to the user first, then call on confirmation.`,
+      description: `Update notebook metadata based on user intent.
+
+## Pattern
+1) Identify target notebook and fields (topics, description, use_cases, tags, url)
+2) Propose the exact change back to the user
+3) After explicit confirmation, call this tool
+
+## Examples
+- User: "React notebook also covers Next.js 14"
+  You: "Add 'Next.js 14' to topics for React?"
+  User: "Yes" → call update_notebook
+
+- User: "Include error handling in n8n description"
+  You: "Update the n8n description to mention error handling?"
+  User: "Yes" → call update_notebook
+
+Tip: You may update multiple fields at once if requested.`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -352,7 +549,20 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     },
     {
       name: 'remove_notebook',
-      description: `Remove a notebook from the local library. Does not delete from NotebookLM. Requires explicit user confirmation.`,
+      description: `Dangerous — requires explicit user confirmation.
+
+## Confirmation Workflow
+1) User requests removal ("Remove the React notebook")
+2) Look up full name to confirm
+3) Ask: "Remove '[notebook_name]' from your library? (Does not delete the actual NotebookLM notebook)"
+4) Only on explicit "Yes" → call remove_notebook
+
+Never remove without permission or based on assumptions.
+
+Example:
+User: "Delete the old React notebook"
+You: "Remove 'React Best Practices' from your library?"
+User: "Yes" → call remove_notebook`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -431,7 +641,11 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     },
     {
       name: 'get_health',
-      description: 'Get server health (auth state, sessions, config). Use to verify readiness.',
+      description:
+        'Get server health status including authentication state, active sessions, and configuration. ' +
+        'Use this to verify the server is ready before starting research workflows.\n\n' +
+        'If authenticated=false and having persistent issues:\n' +
+        'Consider running cleanup_data(preserve_library=true) + setup_auth for fresh start with clean browser session.',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -440,8 +654,18 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     {
       name: 'setup_auth',
       description:
-        'Google authentication for NotebookLM access. Opens browser for manual login. ' +
-        "Use for first-time auth; use 're_auth' for account switching. Verify with 'get_health'.",
+        'Google authentication for NotebookLM access - opens a browser window for manual login to your Google account. ' +
+        'Returns immediately after opening the browser. You have up to 10 minutes to complete the login. ' +
+        "Use 'get_health' tool afterwards to verify authentication was saved successfully. " +
+        'Use this for first-time authentication or when auto-login credentials are not available. ' +
+        'IMPORTANT: If already authenticated, this tool will skip re-authentication. ' +
+        "For switching accounts or rate-limit workarounds, use 're_auth' tool instead.\n\n" +
+        'TROUBLESHOOTING for persistent auth issues:\n' +
+        'If setup_auth fails or you encounter browser/session issues:\n' +
+        '1. Ask user to close ALL Chrome/Chromium instances\n' +
+        '2. Run cleanup_data(confirm=true, preserve_library=true) to clean old data\n' +
+        '3. Run setup_auth again for fresh start\n' +
+        'This helps resolve conflicts from old browser sessions and installation data.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -476,8 +700,17 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     {
       name: 'de_auth',
       description:
-        'Logout. Clears all auth data (cookies, Chrome profile). Preserves library. ' +
-        "Use setup_auth or re_auth to re-authenticate. Verify with 'get_health'.",
+        'De-authenticate (logout) - Clears all authentication data for security. ' +
+        'Use this when:\n' +
+        '- User wants to log out for security reasons\n' +
+        '- Removing credentials before shutting down\n' +
+        '- Clearing auth without immediately re-authenticating\n\n' +
+        'This will:\n' +
+        '1. Close all active browser sessions\n' +
+        '2. Delete all saved authentication data (cookies, Chrome profile)\n' +
+        '3. Preserve notebook library and other data\n\n' +
+        'IMPORTANT: After de_auth, the server will need re-authentication via setup_auth or re_auth before making queries.\n\n' +
+        "Use 'get_health' to verify de-authentication was successful (authenticated: false).",
       inputSchema: {
         type: 'object',
         properties: {},
@@ -486,8 +719,23 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     {
       name: 're_auth',
       description:
-        'Switch Google account or re-authenticate. Use for rate-limit recovery or account switching. ' +
-        "Verify with 'get_health' afterwards.",
+        'Switch to a different Google account or re-authenticate. ' +
+        'Use this when:\n' +
+        '- NotebookLM rate limit is reached (50 queries/day for free accounts)\n' +
+        '- You want to switch to a different Google account\n' +
+        '- Authentication is broken and needs a fresh start\n\n' +
+        'This will:\n' +
+        '1. Close all active browser sessions\n' +
+        '2. Delete all saved authentication data (cookies, Chrome profile)\n' +
+        '3. Open browser for fresh Google login\n\n' +
+        "After completion, use 'get_health' to verify authentication.\n\n" +
+        'TROUBLESHOOTING for persistent auth issues:\n' +
+        'If re_auth fails repeatedly:\n' +
+        '1. Ask user to close ALL Chrome/Chromium instances\n' +
+        '2. Run cleanup_data(confirm=false, preserve_library=true) to preview old files\n' +
+        '3. Run cleanup_data(confirm=true, preserve_library=true) to clean everything except library\n' +
+        '4. Run re_auth again for completely fresh start\n' +
+        'This removes old installation data and browser sessions that can cause conflicts.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -522,9 +770,25 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     {
       name: 'cleanup_data',
       description:
-        'Clean all NotebookLM MCP data (browser profiles, caches, logs, temp files). ' +
-        'Run with confirm=false first to preview. Set preserve_library=true to keep your notebook library. ' +
-        'Close Chrome/Chromium before running.',
+        'ULTRATHINK Deep Cleanup - Scans entire system for ALL NotebookLM MCP data files across 8 categories. Always runs in deep mode, shows categorized preview before deletion.\n\n' +
+        '⚠️ CRITICAL: Close ALL Chrome/Chromium instances BEFORE running this tool! Open browsers can prevent cleanup and cause issues.\n\n' +
+        'Categories scanned:\n' +
+        '1. Legacy Installation (notebooklm-mcp-nodejs) - Old paths with -nodejs suffix\n' +
+        '2. Current Installation (notebooklm-mcp) - Active data, browser profiles, library\n' +
+        '3. NPM/NPX Cache - Cached installations from npx\n' +
+        '4. Claude CLI MCP Logs - MCP server logs from Claude CLI\n' +
+        '5. Temporary Backups - Backup directories in system temp\n' +
+        '6. Claude Projects Cache - Project-specific cache (optional)\n' +
+        '7. Editor Logs (Cursor/VSCode) - MCP logs from code editors (optional)\n' +
+        '8. Trash Files - Deleted notebooklm files in system trash (optional)\n\n' +
+        'Works cross-platform (Linux, Windows, macOS). Safe by design: shows detailed preview before deletion, requires explicit confirmation.\n\n' +
+        'LIBRARY PRESERVATION: Set preserve_library=true to keep your notebook library.json file while cleaning everything else.\n\n' +
+        'RECOMMENDED WORKFLOW for fresh start:\n' +
+        '1. Ask user to close ALL Chrome/Chromium instances\n' +
+        '2. Run cleanup_data(confirm=false, preserve_library=true) to preview\n' +
+        '3. Run cleanup_data(confirm=true, preserve_library=true) to execute\n' +
+        '4. Run setup_auth or re_auth for fresh browser session\n\n' +
+        'Use cases: Clean reinstall, troubleshooting auth issues, removing all traces before uninstall, cleaning old browser sessions and installation data.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -550,7 +814,15 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     // ========================================================================
     {
       name: 'add_source',
-      description: 'Add a source (file, url, text, youtube, google_drive) to the current notebook.',
+      description:
+        'Add a source (document, URL, text, YouTube video) to the current NotebookLM notebook.\n\n' +
+        'Supported source types:\n' +
+        '- file: Upload a local file (PDF, DOCX, TXT, etc.)\n' +
+        '- url: Add a web page URL\n' +
+        '- text: Paste text content directly\n' +
+        '- youtube: Add a YouTube video URL\n' +
+        '- google_drive: Add a Google Drive document link\n\n' +
+        'The source will be processed and indexed for use in conversations.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -590,7 +862,12 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     {
       name: 'delete_source',
       description:
-        'Delete a source from the current notebook. Identify by source_id or source_name. Irreversible.',
+        'Delete a source from the current NotebookLM notebook.\n\n' +
+        'You can identify the source to delete by either:\n' +
+        '- source_id: The unique identifier of the source\n' +
+        '- source_name: The name/title of the source (partial match supported)\n\n' +
+        'Use list_content first to see available sources and their IDs/names.\n\n' +
+        'WARNING: This action is irreversible. The source will be permanently removed from the notebook.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -616,9 +893,21 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     {
       name: 'generate_content',
       description:
-        'Generate content from NotebookLM sources. Supported types: ' +
-        'audio_overview, video, presentation, report, infographic, data_table. ' +
-        'Supports language parameter (80+ languages) and video_style for videos.',
+        'Generate content from your NotebookLM sources.\n\n' +
+        'Supported content types:\n' +
+        '- audio_overview: Audio podcast/overview (Deep Dive conversation with two AI hosts)\n' +
+        '- video: Video summary that visually explains main topics (brief or explainer format)\n' +
+        '- presentation: Slides/presentation with AI-generated content and images\n' +
+        '- report: Briefing document (2,000-3,000 words) summarizing key findings, exportable as PDF/DOCX\n' +
+        '- infographic: Visual infographic in horizontal (16:9) or vertical (9:16) format\n' +
+        '- data_table: Structured table organizing key information (exportable as CSV/Excel)\n\n' +
+        'Language support: All content types support 80+ languages via the language parameter.\n\n' +
+        'Video styles: Video content supports 6 visual styles via the video_style parameter:\n' +
+        'classroom, documentary, animated, corporate, cinematic, minimalist.\n\n' +
+        'These content types use real NotebookLM Studio UI buttons or the generic ContentGenerator ' +
+        'architecture that navigates the Studio panel and falls back to chat-based generation.\n\n' +
+        'NOTE: Other content types (faq, study_guide, timeline, table_of_contents) ' +
+        'are NOT currently implemented. For document-style content, use the ask_question tool.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -664,7 +953,11 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     },
     {
       name: 'list_content',
-      description: 'List all sources and generated content in the current notebook.',
+      description:
+        'List all sources and generated content in the current notebook.\n\n' +
+        'Returns:\n' +
+        '- Sources: Documents, URLs, and other uploaded materials\n' +
+        '- Generated content: Audio overviews',
       inputSchema: {
         type: 'object',
         properties: {
@@ -682,7 +975,14 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     {
       name: 'download_content',
       description:
-        'Download/export generated content (audio_overview, video, infographic, presentation, data_table).',
+        'Download or export generated content from NotebookLM.\n\n' +
+        'Supported content types:\n' +
+        '- audio_overview: Downloads as audio file (MP3)\n' +
+        '- video: Downloads as video file\n' +
+        '- infographic: Downloads as image file\n' +
+        '- presentation: Exports to Google Slides (returns URL)\n' +
+        '- data_table: Exports to Google Sheets (returns URL)\n\n' +
+        'Note: Report content is text-based and returned in the generation response.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -709,7 +1009,12 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     },
     {
       name: 'create_note',
-      description: 'Create a note in NotebookLM. Supports markdown formatting.',
+      description:
+        'Create a note in the NotebookLM Studio panel.\n\n' +
+        'Notes are user-created annotations that appear in your notebook. ' +
+        'Use them to save research findings, summaries, key insights, or any ' +
+        'custom content you want to keep alongside your sources.\n\n' +
+        'Notes support markdown formatting for rich text content.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -736,7 +1041,14 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     {
       name: 'save_chat_to_note',
       description:
-        'Save the current NotebookLM chat to a note with timestamps and message attribution.',
+        'Save the current NotebookLM chat/discussion to a note.\n\n' +
+        'This tool extracts all messages from the current conversation (both user questions ' +
+        'and NotebookLM AI responses) and saves them as a formatted note in the Studio panel.\n\n' +
+        'Use this to:\n' +
+        '- Preserve important research conversations\n' +
+        '- Create a summary of your discussion with NotebookLM\n' +
+        '- Save chat history before starting a new topic\n\n' +
+        'The note will include timestamps and message attribution (User/NotebookLM).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -757,7 +1069,16 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     },
     {
       name: 'convert_note_to_source',
-      description: 'Convert a note to a source document for RAG queries and research.',
+      description:
+        'Convert a note to a source document in NotebookLM.\n\n' +
+        'This feature allows you to convert an existing note into a source, ' +
+        'making the note content available for RAG queries and research.\n\n' +
+        'The method:\n' +
+        '1. Finds the note by title in the Studio panel\n' +
+        '2. Attempts to use NotebookLM\'s native "Convert to source" feature if available\n' +
+        '3. Falls back to extracting note content and creating a text source if not\n\n' +
+        "Use this when you want your note content to be included in NotebookLM's " +
+        'knowledge base for answering questions.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -783,8 +1104,17 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     {
       name: 'list_notebooks_from_nblm',
       description:
-        'Scrape NotebookLM homepage to list all notebooks (ID, name, URL). ' +
-        'Requires auth (run setup_auth first).',
+        'Scrape the NotebookLM homepage to get a real list of all notebooks with their IDs and names.\n\n' +
+        'This tool navigates to notebooklm.google.com and extracts:\n' +
+        '- Notebook ID (UUID from URL)\n' +
+        '- Notebook name (displayed title)\n' +
+        '- Notebook URL\n\n' +
+        'Use this to:\n' +
+        '- Discover notebooks not yet in your library\n' +
+        '- Get accurate notebook IDs for automation\n' +
+        '- Verify which notebooks exist in your account\n' +
+        '- Find notebooks to delete when cleanup is needed\n\n' +
+        'Note: Requires authentication. Run setup_auth first if not authenticated.',
       inputSchema: {
         type: 'object',
         properties: {
